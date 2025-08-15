@@ -14,12 +14,12 @@
     "lint": "npx eslint ."
   },
   "dependencies": {
-    "@types/d3": "7.4.3",
-    "d3": "7.9.0",
     "powerbi-visuals-utils-formattingmodel": "6.0.4"
   },
   "devDependencies": {
+    "@types/d3": "^5.16.7",
     "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "d3": "^5.16.0",
     "eslint": "^9.11.1",
     "eslint-plugin-powerbi-visuals": "^1.0.0",
     "powerbi-visuals-api": "^5.11.0",

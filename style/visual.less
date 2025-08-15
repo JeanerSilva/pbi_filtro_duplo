@@ -12,8 +12,7 @@
     inset: 0;
     overflow-y: auto; /* rolagem vertical */
     padding: 6px;
-    -webkit-user-select: text; /* permitir copiar texto */
-    user-select: text;
+    user-select: text; /* permite copiar */
   }
 
   .list {
@@ -27,9 +26,10 @@
     padding: 6px 8px;
     cursor: pointer;
     line-height: 1.25;
-    word-break: break-word; /* quebra linha no fim do visual */
+    word-break: break-word; /* quebra no fim da largura */
     white-space: normal;
     border-radius: 6px;
+
     &:hover { background: @item-hover-bg; }
     &.selected { background: @item-selected-bg; font-weight: 600; }
   }
