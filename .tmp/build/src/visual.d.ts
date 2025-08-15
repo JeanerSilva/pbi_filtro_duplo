@@ -6,10 +6,15 @@ import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 export declare class Visual implements IVisual {
     private host;
     private root;
+    private searchBar;
+    private searchInputWrap;
+    private searchInput;
+    private searchClear;
     private listContainer;
     private list;
     private settings;
     private items;
+    private searchQuery;
     private currentTarget;
     private lastCategoryQueryName;
     private lastItemCount;
@@ -18,8 +23,8 @@ export declare class Visual implements IVisual {
     private rebuildItems;
     private extractTargetFromMetadata;
     private applyBasicFilter;
-    private render;
+    private applySearchBarSettings;
+    private renderList;
     private onItemClick;
-    private updateListSelectionClasses;
     enumerateObjectInstances(options: powerbi.EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration;
 }
