@@ -1,0 +1,53 @@
+{
+  "dataRoles": [
+    {
+      "name": "category",
+      "kind": "Grouping",
+      "displayName": "Itens"
+    }
+  ],
+  "dataViewMappings": [
+    {
+      "categorical": {
+        "categories": {
+          "for": { "in": "category" },
+          "dataReductionAlgorithm": { "window": { "count": 5000 } }
+        }
+      }
+    }
+  ],
+  "objects": {
+    "behavior": {
+      "displayName": "Comportamento",
+      "properties": {
+        "selectionMode": {
+          "displayName": "Modo de seleção",
+          "type": { "enumeration": [ "single", "multiple" ] }
+        },
+        "forceSelection": {
+          "displayName": "Forçar seleção (modo único)",
+          "type": { "bool": true }
+        }
+      }
+    },
+    "formatting": {
+      "displayName": "Formatação",
+      "properties": {
+        "fontSize": {
+          "displayName": "Tamanho da fonte",
+          "type": { "formatting": { "fontSize": true } }
+        },
+        "itemPadding": {
+          "displayName": "Espaçamento do item (px)",
+          "type": { "numeric": true }
+        }
+      }
+    }
+  },
+  "supportsHighlight": false,
+  "sorting": { "implicit": { "clauses": [ { "role": "category" } ] } },
+  "supportsSynchronizingSelection": true,
+  "suppressDefaultTitle": true,
+  "drilldown": { "roles": [] },
+  "displayName": "Filtro Conjugado"
+}

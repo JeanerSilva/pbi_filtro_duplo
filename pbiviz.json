@@ -1,0 +1,28 @@
+{
+  "visual": {
+    "name": "filtroConjugado",
+    "displayName": "Filtro Conjugado",
+    "guid": "filtroConjugado0A1B2C",
+    "visualClassName": "Visual",
+    "version": "1.0.0.0",
+    "description": "Filtro simples com seleção única/múltipla e sincronização entre visuais (poder de mando).",
+    "supportUrl": "https://example.com",
+    "gitHubUrl": "https://example.com"
+  },
+  "apiVersion": "5.11.0",
+  "author": {
+    "name": "Você",
+    "email": "voce@example.com"
+  },
+  "assets": {
+    "icon": "assets/icon.png",
+    "screenshot": "assets/screenshot.png"
+  },
+  "externalJS": [],
+  "style": "style/visual.less",
+  "capabilities": "capabilities.json",
+  "stringResources": [],
+  "dependencies": "dependencies.json",
+  "licenseTerms": "LICENSE",
+  "privacyTerms": "PRIVACY.md"
+}

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "commonjs",
+    "declaration": true,
+    "outDir": "./.tmp/build/",
+    "rootDir": "./",
+    "sourceMap": true,
+    "experimentalDecorators": true,
+    "strict": true,
+    "types": [
+      "powerbi-visuals-api",
+      "d3"
+    ],
+    "lib": ["dom", "es5", "es2015.promise", "es2015.collection"]
+  },
+  "files": [
+    "src/visual.ts",
+    "src/settings.ts"
+  ]
+}
