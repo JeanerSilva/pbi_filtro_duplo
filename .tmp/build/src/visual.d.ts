@@ -12,25 +12,14 @@ export declare class Visual implements IVisual {
     private settings;
     private items;
     private suppressNextSelectCallback;
-    private externalKeys;
     private didInitialForce;
-    private itemsSignature;
-    private maxItemCount;
     private lastItemCount;
-    private filteredLock;
+    private lastCategoryQueryName;
     constructor(options?: VisualConstructorOptions);
     update(options: VisualUpdateOptions): void;
-    private hasDataViewCategories;
-    /**
-     * Reconstrói items respeitando um "lock" de domínio filtrado:
-     * - Aceita sempre reduções (count diminui ou igual)
-     * - Rejeita aumentos (count cresce) enquanto filteredLock estiver ativo
-     * Retorna {changed, count}.
-     */
-    private rebuildItemsWithLock;
+    private rebuildItems;
     private render;
     private onItemClick;
     private updateListSelectionClasses;
-    private applyExternalSelection;
     enumerateObjectInstances(options: powerbi.EnumerateVisualObjectInstancesOptions): powerbi.VisualObjectInstanceEnumeration;
 }

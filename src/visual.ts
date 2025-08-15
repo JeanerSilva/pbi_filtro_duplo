@@ -13,6 +13,7 @@ import ISelectionId = powerbi.visuals.ISelectionId;
 
 import DataView = powerbi.DataView;
 import DataViewCategorical = powerbi.DataViewCategorical;
+import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
 
 import { VisualSettings } from "./settings";
 
@@ -23,9 +24,6 @@ interface Item {
 }
 
 export class Visual implements IVisual {
-
-  private lastCategoryQueryName: string | null = null;
-
   private host!: IVisualHost;
   private selectionManager!: ISelectionManager;
 
@@ -36,17 +34,15 @@ export class Visual implements IVisual {
   private settings: VisualSettings = new VisualSettings();
   private items: Item[] = [];
 
-  // anti-loop / sincronização
+  // sync / anti-loop
   private suppressNextSelectCallback = false;
-  private externalKeys = new Set<string>(); // seleção que o host informou (para ESTE visual)
-  private didInitialForce = false;          // evita forçar repetidamente
-  private itemsSignature = "";              // identifica mudança real dos dados
+  private didInitialForce = false;
 
-  // ---- Controle de “rebote” de dados / travar domínio filtrado ----
-  private maxItemCount = 0;       // maior cardinalidade já vista (domínio “completo”)
+  // para heurísticas de “forçar 1ª” e detectar re-expansão
   private lastItemCount = 0;
-  private filteredLock = false;   // se true, ignoramos aumentos de cardinalidade
-  // ------------------------------------------------------------------
+
+  // detectar troca/remoção do campo
+  private lastCategoryQueryName: string | null = null;
 
   constructor(options?: VisualConstructorOptions) {
     // DOM base
@@ -78,158 +74,101 @@ export class Visual implements IVisual {
 
       options.element.appendChild(this.root);
 
-      // callback de seleção (de OUTRAS visuais OU desta)
-      this.selectionManager.registerOnSelectCallback((ids: any) => {
+      // seleção desta visual (não recebe seleção de OUTRAS visuais)
+      this.selectionManager.registerOnSelectCallback((_ids: any) => {
         if (this.suppressNextSelectCallback) {
           this.suppressNextSelectCallback = false;
           return;
         }
-        const visualIds = (ids || []) as unknown as ISelectionId[];
-        this.applyExternalSelection(visualIds);
+        // Apenas re-renderiza classes, os items já refletem o estado local
+        this.updateListSelectionClasses();
       });
     }
   }
 
   public update(options: VisualUpdateOptions): void {
-    const dataView = options.dataViews && options.dataViews[0];
-
-    // settings vêm de metadata.objects — atualize mesmo sem dados
-    if (dataView) this.settings = VisualSettings.parse(dataView);
-
     const dv = options.dataViews && options.dataViews[0];
+    if (dv) this.settings = VisualSettings.parse(dv);
+
     const cat = dv?.categorical?.categories?.[0] || null;
     const qn = cat?.source?.queryName || null;
 
-    // 0) Sempre parse settings se dv existir
-    if (dv) this.settings = VisualSettings.parse(dv);
-
-    // A) Campo REMOVIDO: sem categoria => limpa lista e destrava tudo
+    // REMOÇÃO DO CAMPO: zera tudo e limpa seleção
     if (!cat) {
       this.items = [];
-      this.itemsSignature = "";
-      this.externalKeys.clear();
       this.didInitialForce = false;
-      this.filteredLock = false;
-      this.maxItemCount = 0;
       this.lastItemCount = 0;
       this.lastCategoryQueryName = null;
+
+      this.suppressNextSelectCallback = true;
+      this.selectionManager.clear();
+
       this.render();
-      return; // nada mais a fazer neste update
+      return;
     }
 
-    // B) Campo TROCOU (queryName diferente): reset controlado
+    // TROCA DE CAMPO: reseta estado interno
     if (this.lastCategoryQueryName && qn && qn !== this.lastCategoryQueryName) {
       this.items = [];
-      this.itemsSignature = "";
-      this.externalKeys.clear();
       this.didInitialForce = false;
-      this.filteredLock = false;
-      this.maxItemCount = 0;
       this.lastItemCount = 0;
     }
-    // atualiza cache do campo
     this.lastCategoryQueryName = qn;
 
+    // Reconstrói SEM “locks”: sempre aceita o que o modelo mandar
+    const r = this.rebuildItems(dv, cat);
 
-    // 1) Transformar dados SOMENTE se houver categorias
-    let rebuildResult: { changed: boolean; count: number } | null = null;
-    if (dataView && this.hasDataViewCategories(dataView)) {
-      rebuildResult = this.rebuildItemsWithLock(dataView);
-      if (rebuildResult.changed) {
-        const sig = this.items.map(i => i.label).join("|");
-        if (sig !== this.itemsSignature) {
-          this.itemsSignature = sig;
-          this.didInitialForce = false; // nova “rodada” de dados
-        }
-      }
-    }
-
-    // 2) Determinar se o host já tem alguma seleção ativa
+    // Host tem seleção ATIVA para este visual?
     const smAny = this.selectionManager as any;
-    const hostHasSelection = typeof smAny.hasSelection === "function"
-      ? !!smAny.hasSelection()
-      : (this.externalKeys.size > 0);
+    const hostHasSelection =
+      typeof smAny.hasSelection === "function" ? !!smAny.hasSelection() : false;
 
-    // 3) Atualizar lock conforme cardinalidade vs domínio completo
-    //    - Se count < maxItemCount => estamos filtrados -> liga lock
-    //    - Se count == maxItemCount e NÃO há seleção no host e ninguém selecionado localmente -> desliga lock
-    if (rebuildResult) {
-      const count = rebuildResult.count;
-      if (this.maxItemCount < count) this.maxItemCount = count; // aprende domínio completo
+    // Forçar 1ª seleção (modo único) – só quando:
+    // - single + force ligado
+    // - há itens
+    // - ainda não forçamos nesta rodada
+    // - NÃO há seleção no host para esta visual
+    // - a lista ENCOLHEU (contagem atual <= contagem anterior) ou é a 1ª vez (lastItemCount === 0)
+    const isSingle = this.settings.behavior_selectionMode; // true = único
+    const canForceBase =
+      isSingle && this.settings.behavior_forceSelection && this.items.length > 0;
+    const justShrunk = this.lastItemCount === 0 || r.count <= this.lastItemCount;
 
-      const anyLocalSelected = this.items.some(i => i.selected);
-
-      if (count > 0 && this.maxItemCount > 0) {
-        if (count < this.maxItemCount) {
-          this.filteredLock = true; // estamos sob filtro externo (ex.: Estado selecionado)
-        } else if (count === this.maxItemCount && !hostHasSelection && !anyLocalSelected) {
-          this.filteredLock = false; // desbloqueia quando realmente não há filtro nenhum
-        }
+    if (canForceBase && !hostHasSelection && !this.didInitialForce && justShrunk) {
+      // só força se o 1º item ainda não está marcado localmente
+      let needForce = true;
+      for (let i = 0; i < this.items.length; i++) {
+        if (this.items[i].selected) { needForce = false; break; }
       }
-      this.lastItemCount = count;
-    }
-
-    // 4) Forçar seleção (modo único) — apenas quando seguro
-    const isSingle = this.settings.behavior_selectionMode; // true = seleção única
-    const canForceBase = isSingle && this.settings.behavior_forceSelection && this.items.length > 0;
-
-    // Só força se:
-    //  - canForceBase
-    //  - não há seleção deste visual no host (externalKeys desconhecidas) E (opcional: hasSelection=false)
-    //  - ainda não forçamos nesta rodada
-    //  - (IMPORTANTE) estamos LOCKADOS (lista já foi reduzida por filtro externo) OU é a 1ª render com domínio completo
-    const safeToForce =
-      canForceBase &&
-      !hostHasSelection &&
-      !this.didInitialForce &&
-      (this.filteredLock || this.maxItemCount === this.items.length);
-
-    if (safeToForce) {
-      // força somente se o primeiro não estiver implicitamente selecionado
-      const k0 = (this.items[0].selectionId as any).getKey?.();
-      if (!this.externalKeys.has(k0)) {
-        for (const it of this.items) it.selected = false;
+      if (needForce) {
+        // marca localmente
+        for (let i = 0; i < this.items.length; i++) this.items[i].selected = false;
         this.items[0].selected = true;
 
+        // dispara seleção (sem loop)
         this.suppressNextSelectCallback = true;
         this.selectionManager.select(this.items[0].selectionId, false);
+
+        this.didInitialForce = true;
       }
-      this.didInitialForce = true;
     }
 
-    // 5) Render
+    // Atualiza “baseline” de contagem (p/ heurística)
+    this.lastItemCount = r.count;
+
     this.render();
   }
 
-  // ======== Data helpers ========
+  // ======== Data ========
 
-  private hasDataViewCategories(dv: DataView): boolean {
-    const cat = dv?.categorical?.categories?.[0];
-    const len = cat?.values?.length ?? 0;
-    return !!cat && len > 0;
-  }
+  private rebuildItems(dv: DataView, cat: DataViewCategoryColumn): { changed: boolean; count: number } {
+    const categorical = dv.categorical as DataViewCategorical;
+    if (!categorical || !cat) return { changed: false, count: 0 };
 
-  /**
-   * Reconstrói items respeitando um "lock" de domínio filtrado:
-   * - Aceita sempre reduções (count diminui ou igual)
-   * - Rejeita aumentos (count cresce) enquanto filteredLock estiver ativo
-   * Retorna {changed, count}.
-   */
-  private rebuildItemsWithLock(dataView: DataView): { changed: boolean; count: number } {
-    const categorical = dataView.categorical as DataViewCategorical;
-    const cat = categorical?.categories?.[0];
-    const values = cat?.values || [];
+    const values = cat.values || [];
     const newCount = values.length;
 
-    if (!cat || newCount === 0) return { changed: false, count: 0 };
-
-    // Se estamos lockados e houve AUMENTO de cardinalidade, ignore este update (rebote)
-    if (this.filteredLock && newCount > this.lastItemCount) {
-      return { changed: false, count: this.lastItemCount };
-    }
-
-    // Constrói nova lista
-    const newItems: Item[] = [];
+    const newItems: Item[] = new Array(newCount);
     for (let i = 0; i < newCount; i++) {
       const v = values[i];
       const selectionId = (this.host as any)
@@ -237,26 +176,41 @@ export class Visual implements IVisual {
         .withCategory(cat, i)
         .createSelectionId() as ISelectionId;
 
-      newItems.push({
-        label: (v == null ? "" : String(v)),
+      newItems[i] = {
+        label: v == null ? "" : String(v),
         selectionId,
         selected: false
-      });
+      };
     }
 
-    const changed =
-      newItems.length !== this.items.length ||
-      newItems.some((ni, idx) => this.items[idx]?.label !== ni.label);
+    // Mantém seleção anterior por label (best-effort) se possível
+    if (this.items.length > 0) {
+      const prevSelected = new Set<string>();
+      for (let i = 0; i < this.items.length; i++) {
+        if (this.items[i].selected) prevSelected.add(this.items[i].label);
+      }
+      if (prevSelected.size > 0) {
+        for (let i = 0; i < newItems.length; i++) {
+          if (prevSelected.has(newItems[i].label)) newItems[i].selected = true;
+        }
+      }
+    }
+
+    // Detecta mudança
+    let changed = newItems.length !== this.items.length;
+    if (!changed) {
+      for (let i = 0; i < newItems.length; i++) {
+        if (this.items[i]?.label !== newItems[i].label) { changed = true; break; }
+      }
+    }
 
     if (changed) this.items = newItems;
-
     return { changed, count: newCount };
   }
 
   // ======== Render ========
 
   private render(): void {
-    // limpa UL
     while (this.list.firstChild) this.list.removeChild(this.list.firstChild);
 
     if (this.items.length === 0) {
@@ -267,25 +221,44 @@ export class Visual implements IVisual {
       return;
     }
 
-    for (const item of this.items) {
+    const isSingle = this.settings.behavior_selectionMode; // true = radio, false = checkbox
+
+    for (let idx = 0; idx < this.items.length; idx++) {
+      const item = this.items[idx];
+
       const li = document.createElement("li");
       li.className = "item" + (item.selected ? " selected" : "");
-      li.textContent = item.label;
-
-      // formatação
       li.style.fontSize = `${this.settings.formatting_fontSize}px`;
       li.style.paddingTop = `${this.settings.formatting_itemPadding}px`;
       li.style.paddingBottom = `${this.settings.formatting_itemPadding}px`;
 
+      // Input explícito (radio / checkbox)
+      const input = document.createElement("input");
+      input.type = isSingle ? "radio" : "checkbox";
+      if (isSingle) input.name = "visual-selection-group";
+      input.checked = item.selected;
+
+      input.addEventListener("click", (ev) => {
+        ev.stopPropagation(); // evita duplo disparo
+        this.onItemClick(item, !isSingle && (ev as MouseEvent).ctrlKey);
+      });
+
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      label.style.marginLeft = "4px";
+      label.style.wordBreak = "break-word";
+
+      li.appendChild(input);
+      li.appendChild(label);
+
+      // clique na linha inteira também seleciona
       li.addEventListener("mousedown", (ev) => {
         if ((ev as MouseEvent).button !== 0) return;
         ev.preventDefault();
       });
-
       li.addEventListener("click", (ev) => {
         if ((ev as MouseEvent).button !== 0) return;
-        const userMultiKey = (ev as MouseEvent).ctrlKey || (ev as MouseEvent).metaKey;
-        this.onItemClick(item, userMultiKey);
+        this.onItemClick(item, !isSingle && (ev as MouseEvent).ctrlKey);
       });
 
       this.list.appendChild(li);
@@ -293,32 +266,34 @@ export class Visual implements IVisual {
   }
 
   private onItemClick(item: Item, userMultiKey: boolean): void {
-    const isMultiMode = !this.settings.behavior_selectionMode; // false => múltipla
+    const isSingle = this.settings.behavior_selectionMode;
+    const isMultiMode = !isSingle;
 
-    // Evita limpar seleção ao clicar de novo no mesmo item (toggle off do host)
-    const singleMode = this.settings.behavior_selectionMode; // true = único
-    if (singleMode && this.settings.behavior_forceSelection && item.selected) {
-      // Mantém exatamente como está; não dispara select nem altera nada
+    // Evita toggle-off no modo único + forçar: clicar no mesmo não limpa
+    if (isSingle && this.settings.behavior_forceSelection && item.selected) {
       return;
     }
-    const multiGesture = isMultiMode ? (userMultiKey || false) : false;
 
     if (isMultiMode) {
       item.selected = !item.selected;
     } else {
-      for (const it of this.items) it.selected = false;
+      for (let i = 0; i < this.items.length; i++) this.items[i].selected = false;
       item.selected = true;
     }
 
     this.updateListSelectionClasses();
 
-    // Ao clicar, esta instância é quem “manda” — travamos no domínio atual
-    this.filteredLock = true;
+    // Marca que já “forçamos” nesta rodada, para não re-forçar em update()
     this.didInitialForce = true;
+
+    // dispara seleção (sem loop)
     this.suppressNextSelectCallback = true;
 
     if (isMultiMode) {
-      const selectedIds = this.items.filter(i => i.selected).map(i => i.selectionId);
+      const selectedIds: ISelectionId[] = [];
+      for (let i = 0; i < this.items.length; i++) {
+        if (this.items[i].selected) selectedIds.push(this.items[i].selectionId);
+      }
       if (selectedIds.length > 0) {
         this.selectionManager.select(selectedIds as any, true);
       } else {
@@ -336,44 +311,14 @@ export class Visual implements IVisual {
       if (!el.classList.contains("item")) continue;
       const it = this.items[i];
       if (!it) continue;
+
       el.classList.toggle("selected", !!it.selected);
+      const input = el.querySelector("input") as HTMLInputElement;
+      if (input) input.checked = !!it.selected;
     }
   }
 
-  // ======== Sincronização externa ========
-
-  private applyExternalSelection(ids: ISelectionId[]): void {
-    // guarda chaves do host (para ESTE visual)
-    const keys = new Set((ids || []).map((id: any) => id.getKey?.()));
-    this.externalKeys = keys;
-
-    // se não temos itens agora (ex.: update de formatação), não há o que refletir
-    if (this.items.length === 0) return;
-
-    let changed = false;
-
-    if (!ids || ids.length === 0) {
-      // sem seleção do host: na próxima atualização com dados “completos”, soltamos o lock
-      // aqui apenas limpamos seleção local
-      for (const it of this.items) {
-        if (it.selected) { it.selected = false; changed = true; }
-      }
-    } else {
-      // refletir seleção externa deste visual
-      for (const it of this.items) {
-        const sel = keys.has((it.selectionId as any).getKey?.());
-        if (it.selected !== sel) { it.selected = sel; changed = true; }
-      }
-      // se recebemos seleção externa com a lista reduzida, mantenha o lock
-      if (this.items.length < this.maxItemCount) {
-        this.filteredLock = true;
-      }
-    }
-
-    if (changed) this.updateListSelectionClasses();
-  }
-
-  // ======== Painel de formatação ========
+  // ======== Painel ========
 
   public enumerateObjectInstances(
     options: powerbi.EnumerateVisualObjectInstancesOptions
@@ -385,7 +330,7 @@ export class Visual implements IVisual {
       instances.push({
         objectName: "behavior",
         properties: {
-          selectionMode: this.settings.behavior_selectionMode,
+          selectionMode: this.settings.behavior_selectionMode, // true = único (radio)
           forceSelection: this.settings.behavior_forceSelection
         },
         selector: {} as any
