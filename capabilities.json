@@ -36,26 +36,24 @@
       }
     },
     "formatting": {
-  "displayName": "Formatação",
-  "properties": {
-    "fontSize": { "displayName": "Tamanho da fonte (lista)", "type": { "formatting": { "fontSize": true } } },
-    "itemPadding": { "displayName": "Espaçamento do item (px)", "type": { "numeric": true } },
+      "displayName": "Formatação",
+      "properties": {
+        "fontSize":     { "displayName": "Tamanho da fonte (lista)", "type": { "formatting": { "fontSize": true } } },
+        "itemPadding":  { "displayName": "Espaçamento do item (px)", "type": { "numeric": true } },
 
-    "fontFamily": { "displayName": "Fonte", "type": { "formatting": { "fontFamily": true } } },
-    "fontColor":  { "displayName": "Cor",   "type": { "fill": { "solid": { "color": true } } } },
-    "bold":       { "displayName": "Negrito",     "type": { "bool": true } },
-    "italic":     { "displayName": "Itálico",     "type": { "bool": true } },
-    "underline":  { "displayName": "Sublinhado",  "type": { "bool": true } }
-  }
-}
-
-,
+        "fontFamily":   { "displayName": "Fonte", "type": { "formatting": { "fontFamily": true } } },
+        "fontColor":    { "displayName": "Cor",   "type": { "fill": { "solid": { "color": true } } } },
+        "fontBold":         { "displayName": "Negrito",     "type": { "bool": true } },
+        "fontItalic":       { "displayName": "Itálico",     "type": { "bool": true } },
+        "fontUnderline":    { "displayName": "Sublinhado",  "type": { "bool": true } }
+      }
+    },
     "search": {
       "displayName": "Busca",
       "properties": {
-        "enabled": { "displayName": "Exibir busca", "type": { "bool": true } },
-        "placeholder": { "displayName": "Placeholder", "type": { "text": true } },
-        "fontSize": { "displayName": "Tamanho da fonte (busca)", "type": { "formatting": { "fontSize": true } } }
+        "enabled":     { "displayName": "Exibir busca", "type": { "bool": true } },
+        "placeholder": { "displayName": "Placeholder",   "type": { "text": true } },
+        "fontSize":    { "displayName": "Tamanho da fonte (busca)", "type": { "formatting": { "fontSize": true } } }
       }
     }
   },

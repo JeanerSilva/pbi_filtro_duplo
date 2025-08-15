@@ -38,7 +38,6 @@ export class VisualSettings {
     s.formatting_fontItalic = getBool(objects, "formatting", "fontItalic", s.formatting_fontItalic);
     s.formatting_fontUnderline = getBool(objects, "formatting", "fontUnderline", s.formatting_fontUnderline);
 
-
     s.behavior_selectionMode = getBool(objects, "behavior", "selectionMode", s.behavior_selectionMode);
     s.behavior_forceSelection = getBool(objects, "behavior", "forceSelection", s.behavior_forceSelection);
     s.behavior_leafOnly     = getBool(objects, "behavior", "leafOnly", s.behavior_leafOnly);

@@ -274,7 +274,6 @@ export class Visual implements IVisual {
 
   // ===================== RENDER =====================
   private renderTree(): void {
-  // limpa
   while (this.treeRootEl.firstChild) this.treeRootEl.removeChild(this.treeRootEl.firstChild);
 
   if (!this.rootNode || this.rootNode.children.length === 0) {
@@ -285,67 +284,43 @@ export class Visual implements IVisual {
     return;
   }
 
-  const listFont = Math.max(8, Number(this.settings.formatting_fontSize) || 15);
+  const listFont = Math.max(8, Number(this.settings.formatting_fontSize) || 12);
   const padding  = Math.max(0, Number(this.settings.formatting_itemPadding) || 0);
   const isSingle = !!this.settings.behavior_selectionMode;
   const leafOnly = !!this.settings.behavior_leafOnly;
 
-  // função recursiva
   const renderNode = (node: Node, ul: HTMLElement, depth: number) => {
     if (node.level >= 0) {
-      // filtro de busca (exibe nós que casam OU que têm descendente que casa)
-      if (!this.matchesSearch(node) && !this.descendantMatchesSearch(node)) {
-        // não renderiza este ramo
-        return;
-      }
+      if (!this.matchesSearch(node) && !this.descendantMatchesSearch(node)) return;
 
       const li = document.createElement("li");
 
       const row = document.createElement("div");
-      // quando leafOnly: só mostra "selected" se for folha
       const isSelectedForStyle = node.selected && (!leafOnly || node.isLeaf);
       row.className = "node" + (isSelectedForStyle ? " selected" : "");
       row.style.paddingLeft = (depth * 14 + 2) + "px";
       row.style.fontSize = listFont + "px";
       row.style.paddingTop = padding + "px";
       row.style.paddingBottom = padding + "px";
-      row.style.fontFamily = this.settings.formatting_fontFamily;
-      row.style.color = this.settings.formatting_fontColor;
-      row.style.fontWeight = this.settings.formatting_fontBold ? "600" : "400";
-      row.style.fontStyle = this.settings.formatting_fontItalic ? "italic" : "normal";
-      row.style.textDecoration = this.settings.formatting_fontUnderline ? "underline" : "none";
 
-      
-
-      // toggle (abre/fecha grupo)
       const toggle = document.createElement("span");
       toggle.className = "toggle";
       toggle.textContent = node.isLeaf ? "" : (node.expanded ? "▼" : "▶");
       toggle.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (!node.isLeaf) {
-          node.expanded = !node.expanded;
-          this.renderTree();
-        }
+        if (!node.isLeaf) { node.expanded = !node.expanded; this.renderTree(); }
       });
 
-      // input (radio/checkbox) — só para folhas quando leafOnly=true
       const showInput = !(leafOnly && !node.isLeaf);
       let inputOrSpacer: HTMLElement;
-
       if (showInput) {
         const input = document.createElement("input");
         input.type = isSingle ? "radio" : "checkbox";
         input.checked = node.selected;
         if (isSingle) input.name = "visual-selection-group";
-
-        input.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          this.onNodeClick(node, isSingle, leafOnly);
-        });
+        input.addEventListener("click", (ev) => { ev.stopPropagation(); this.onNodeClick(node, isSingle, leafOnly); });
         inputOrSpacer = input;
       } else {
-        // spacer para manter alinhamento quando não exibimos o input
         const spacer = document.createElement("span");
         spacer.style.display = "inline-block";
         spacer.style.width = "14px";
@@ -353,20 +328,20 @@ export class Visual implements IVisual {
         inputOrSpacer = spacer;
       }
 
-      // label
       const label = document.createElement("span");
       label.className = "label";
       label.textContent = node.label;
 
-      // clique na linha
-      row.addEventListener("mousedown", (ev) => {
-        if ((ev as MouseEvent).button !== 0) return;
-        ev.preventDefault();
-      });
-      row.addEventListener("click", (ev) => {
-        if ((ev as MouseEvent).button !== 0) return;
-        this.onNodeClick(node, isSingle, leafOnly);
-      });
+      // ⬇⬇⬇ APLICAÇÃO DA TIPOGRAFIA (usa os toggles booleanos) ⬇⬇⬇
+      label.style.fontFamily    = this.settings.formatting_fontFamily;
+      label.style.color         = this.settings.formatting_fontColor;
+      label.style.fontWeight    = this.settings.formatting_fontBold ? "bold" : "normal";
+      label.style.fontStyle     = this.settings.formatting_fontItalic ? "italic" : "normal";
+      label.style.textDecoration= this.settings.formatting_fontUnderline ? "underline" : "none";
+      // ⬆⬆⬆------------------------------------------------------⬆⬆⬆
+
+      row.addEventListener("mousedown", (ev) => { if ((ev as MouseEvent).button !== 0) return; ev.preventDefault(); });
+      row.addEventListener("click", (ev) => { if ((ev as MouseEvent).button !== 0) return; this.onNodeClick(node, isSingle, leafOnly); });
 
       row.appendChild(toggle);
       row.appendChild(inputOrSpacer);
@@ -379,20 +354,16 @@ export class Visual implements IVisual {
         const kidsUl = document.createElement("ul");
         kidsUl.className = "children";
         li.appendChild(kidsUl);
-        for (let i = 0; i < node.children.length; i++) {
-          renderNode(node.children[i], kidsUl, depth + 1);
-        }
+        for (let i = 0; i < node.children.length; i++) renderNode(node.children[i], kidsUl, depth + 1);
       }
     } else {
-      // raiz sintética: renderiza filhos
-      for (let i = 0; i < node.children.length; i++) {
-        renderNode(node.children[i], ul, 0);
-      }
+      for (let i = 0; i < node.children.length; i++) renderNode(node.children[i], ul, 0);
     }
   };
 
   renderNode(this.rootNode, this.treeRootEl, 0);
 }
+
 
 
   // ===================== CLICK / SELECTION =====================
@@ -541,46 +512,77 @@ export class Visual implements IVisual {
 
   // ===================== FORMAT PANE =====================
   public enumerateObjectInstances(
-    options: powerbi.EnumerateVisualObjectInstancesOptions
-  ): powerbi.VisualObjectInstanceEnumeration {
+  options: powerbi.EnumerateVisualObjectInstancesOptions
+): powerbi.VisualObjectInstanceEnumeration {
 
-    const instances: powerbi.VisualObjectInstance[] = [];
+  const instances: powerbi.VisualObjectInstance[] = [];
 
-    if (options.objectName === "behavior") {
-      instances.push({
-        objectName: "behavior",
-        properties: {
-          selectionMode: this.settings.behavior_selectionMode,
-          forceSelection: this.settings.behavior_forceSelection,
-          leafOnly: this.settings.behavior_leafOnly
-        },
-        selector: {} as any
-      } as any);
-    }
-
-    if (options.objectName === "formatting") {
-      instances.push({
-        objectName: "formatting",
-        properties: {
-          fontSize: this.settings.formatting_fontSize,
-          itemPadding: this.settings.formatting_itemPadding
-        },
-        selector: {} as any
-      } as any);
-    }
-
-    if (options.objectName === "search") {
-      instances.push({
-        objectName: "search",
-        properties: {
-          enabled: this.settings.search_enabled,
-          placeholder: this.settings.search_placeholder,
-          fontSize: this.settings.search_fontSize
-        },
-        selector: {} as any
-      } as any);
-    }
-
-    return instances;
+  if (options.objectName === "behavior") {
+    instances.push({
+      objectName: "behavior",
+      properties: {
+        selectionMode: this.settings.behavior_selectionMode,
+        forceSelection: this.settings.behavior_forceSelection,
+        leafOnly: this.settings.behavior_leafOnly
+      },
+      selector: {} as any
+    } as any);
   }
+
+  if (options.objectName === "formatting") {
+    // 1) tamanho/spacing
+    instances.push({
+      objectName: "formatting",
+      properties: {
+        fontSize: this.settings.formatting_fontSize,
+        itemPadding: this.settings.formatting_itemPadding
+      },
+      selector: {} as any
+    } as any);
+
+    // 2) família
+    instances.push({
+      objectName: "formatting",
+      properties: {
+        fontFamily: this.settings.formatting_fontFamily
+      },
+      selector: {} as any
+    } as any);
+
+    // 3) cor (fill)
+    instances.push({
+      objectName: "formatting",
+      properties: {
+        fontColor: { solid: { color: this.settings.formatting_fontColor } }
+      },
+      selector: {} as any
+    } as any);
+
+    // 4) estilo (B/I/U) — em instância separada!
+    instances.push({
+      objectName: "formatting",
+      properties: {
+        fontBold: this.settings.formatting_fontBold,
+        fontItalic: this.settings.formatting_fontItalic,
+        fontUnderline: this.settings.formatting_fontUnderline
+      },
+      selector: {} as any
+    } as any);
+  }
+
+  if (options.objectName === "search") {
+    instances.push({
+      objectName: "search",
+      properties: {
+        enabled: this.settings.search_enabled,
+        placeholder: this.settings.search_placeholder,
+        fontSize: this.settings.search_fontSize
+      },
+      selector: {} as any
+    } as any);
+  }
+
+  return instances;
+}
+
 }
