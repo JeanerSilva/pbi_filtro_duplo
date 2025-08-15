@@ -18,7 +18,6 @@
   width: 100%;
   box-sizing: border-box;
   padding: 4px 22px 4px 6px;
-  /* espaço pro botão X */
   border: 1px solid #ccc;
   border-radius: 2px;
   outline: none;
@@ -42,33 +41,35 @@
   overflow-y: auto;
   flex: 1 1 auto;
 }
-.list {
+.tree {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.item {
-  cursor: pointer;
-  padding: 2px 2px;
-  user-select: none;
+.node {
   display: flex;
   align-items: center;
   line-height: 1.2;
   word-break: break-word;
+  user-select: none;
+  cursor: pointer;
 }
-.item.selected {
-  background: rgba(0, 0, 0, 0.06);
+.node .toggle {
+  width: 14px;
+  text-align: center;
+  margin-right: 4px;
+  flex: 0 0 auto;
+  cursor: pointer;
 }
-.item input[type="radio"],
-.item input[type="checkbox"] {
-  margin: 0;
-}
-.item span {
+.node .label {
   margin-left: 4px;
 }
-.empty {
-  color: #666;
-  font-style: italic;
-  padding: 6px 2px;
+.node.selected {
+  background: rgba(0, 0, 0, 0.06);
+}
+.children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 

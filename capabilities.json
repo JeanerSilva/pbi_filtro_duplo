@@ -1,13 +1,19 @@
 {
   "privileges": [],
   "dataRoles": [
-    { "name": "category", "kind": "Grouping", "displayName": "Itens" }
+    { "name": "level1", "kind": "Grouping", "displayName": "Nível 1" },
+    { "name": "level2", "kind": "Grouping", "displayName": "Nível 2" },
+    { "name": "level3", "kind": "Grouping", "displayName": "Nível 3" }
   ],
   "dataViewMappings": [
     {
       "categorical": {
         "categories": {
-          "for": { "in": "category" },
+          "select": [
+            { "for": { "in": "level1" } },
+            { "for": { "in": "level2" } },
+            { "for": { "in": "level3" } }
+          ],
           "dataReductionAlgorithm": { "window": { "count": 50000 } }
         }
       }
@@ -25,16 +31,25 @@
       "displayName": "Comportamento",
       "properties": {
         "selectionMode": { "displayName": "Seleção única", "type": { "bool": true } },
-        "forceSelection": { "displayName": "Forçar seleção (modo único)", "type": { "bool": true } }
+        "forceSelection": { "displayName": "Forçar seleção (modo único)", "type": { "bool": true } },
+        "leafOnly": { "displayName": "Selecionar apenas folhas", "type": { "bool": true } }
       }
     },
     "formatting": {
-      "displayName": "Formatação",
-      "properties": {
-        "fontSize": { "displayName": "Tamanho da fonte (lista)", "type": { "formatting": { "fontSize": true } } },
-        "itemPadding": { "displayName": "Espaçamento do item (px)", "type": { "numeric": true } }
-      }
-    },
+  "displayName": "Formatação",
+  "properties": {
+    "fontSize": { "displayName": "Tamanho da fonte (lista)", "type": { "formatting": { "fontSize": true } } },
+    "itemPadding": { "displayName": "Espaçamento do item (px)", "type": { "numeric": true } },
+
+    "fontFamily": { "displayName": "Fonte", "type": { "formatting": { "fontFamily": true } } },
+    "fontColor":  { "displayName": "Cor",   "type": { "fill": { "solid": { "color": true } } } },
+    "bold":       { "displayName": "Negrito",     "type": { "bool": true } },
+    "italic":     { "displayName": "Itálico",     "type": { "bool": true } },
+    "underline":  { "displayName": "Sublinhado",  "type": { "bool": true } }
+  }
+}
+
+,
     "search": {
       "displayName": "Busca",
       "properties": {

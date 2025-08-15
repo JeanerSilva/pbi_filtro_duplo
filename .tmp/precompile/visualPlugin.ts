@@ -5,9 +5,9 @@ import VisualConstructorOptions = powerbiVisualsApi.extensibility.visual.VisualC
 import DialogConstructorOptions = powerbiVisualsApi.extensibility.visual.DialogConstructorOptions;
 var powerbiKey: any = "powerbi";
 var powerbi: any = window[powerbiKey];
-var filtroConjugado123456: IVisualPlugin = {
-    name: 'filtroConjugado123456',
-    displayName: 'Filtro Conjugado',
+var filtroHierarquico123456: IVisualPlugin = {
+    name: 'filtroHierarquico123456',
+    displayName: 'Filtro Hierárquico que permite mais de um por tela.',
     class: 'Visual',
     apiVersion: '5.11.0',
     create: (options?: VisualConstructorOptions) => {
@@ -27,6 +27,6 @@ var filtroConjugado123456: IVisualPlugin = {
 if (typeof powerbi !== "undefined") {
     powerbi.visuals = powerbi.visuals || {};
     powerbi.visuals.plugins = powerbi.visuals.plugins || {};
-    powerbi.visuals.plugins["filtroConjugado123456"] = filtroConjugado123456;
+    powerbi.visuals.plugins["filtroHierarquico123456"] = filtroHierarquico123456;
 }
-export default filtroConjugado123456;
+export default filtroHierarquico123456;
