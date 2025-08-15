@@ -1,4 +1,3 @@
-
 {
   "privileges": [],
   "dataRoles": [
@@ -15,6 +14,13 @@
     }
   ],
   "objects": {
+    "general": {
+      "displayName": "Geral",
+      "properties": {
+        "filter": { "type": { "filter": true } },
+        "selfFilter": { "type": { "filter": { "selfFilter": true } } }
+      }
+    },
     "behavior": {
       "displayName": "Comportamento",
       "properties": {
@@ -31,6 +37,6 @@
     }
   },
   "supportsHighlight": false,
-  "suppressDefaultTitle": true
+  "suppressDefaultTitle": true,
+  "supportsSynchronizingFilterState": true
 }
-

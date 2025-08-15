@@ -6,10 +6,7 @@ import powerbi from "powerbi-visuals-api";
 import IVisual = powerbi.extensibility.visual.IVisual;
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
-
 import IVisualHost = powerbi.extensibility.IVisualHost;
-import ISelectionManager = powerbi.extensibility.ISelectionManager;
-import ISelectionId = powerbi.visuals.ISelectionId;
 
 import DataView = powerbi.DataView;
 import DataViewCategorical = powerbi.DataViewCategorical;
@@ -19,13 +16,25 @@ import { VisualSettings } from "./settings";
 
 interface Item {
   label: string;
-  selectionId: ISelectionId;
   selected: boolean;
+}
+
+type BasicFilterTarget = { table: string; column: string } | null;
+
+const FILTER_OBJECT = "general";
+const FILTER_PROP = "filter";
+
+// Power BI BasicFilter (schema simplificado)
+interface BasicFilter {
+  $schema: string; // "http://powerbi.com/product/schema#basic"
+  target: { table: string; column: string };
+  operator: "In" | "NotIn";
+  values: any[]; // string[] normalmente
+  filterType: number; // 1 = Basic
 }
 
 export class Visual implements IVisual {
   private host!: IVisualHost;
-  private selectionManager!: ISelectionManager;
 
   private root!: HTMLElement;
   private listContainer!: HTMLElement;
@@ -34,18 +43,15 @@ export class Visual implements IVisual {
   private settings: VisualSettings = new VisualSettings();
   private items: Item[] = [];
 
-  // sync / anti-loop
-  private suppressNextSelectCallback = false;
-  private didInitialForce = false;
-
-  // para heurísticas de “forçar 1ª” e detectar re-expansão
-  private lastItemCount = 0;
-
-  // detectar troca/remoção do campo
+  // guarda target do campo categórico para aplicar filtro
+  private currentTarget: BasicFilterTarget = null;
   private lastCategoryQueryName: string | null = null;
 
+  // heurística p/ forçar 1ª seleção
+  private lastItemCount = 0;
+
   constructor(options?: VisualConstructorOptions) {
-    // DOM base
+    // DOM
     this.root = document.createElement("div");
     this.root.className = "filtro-conjugado";
 
@@ -58,157 +64,156 @@ export class Visual implements IVisual {
     this.listContainer.appendChild(this.list);
     this.root.appendChild(this.listContainer);
 
-    // placeholders
-    this.host = ({ persistProperties: () => {} } as any);
-    this.selectionManager = ({
-      select: () => Promise.resolve([]),
-      clear: () => Promise.resolve(),
-      registerOnSelectCallback: () => {}
-    } as any);
+    // host placeholder
+    this.host = ({ applyJsonFilter: () => {} } as any);
 
     if (options) {
       this.host = options.host as IVisualHost;
-      this.selectionManager = (this.host as any).createSelectionManager
-        ? (this.host as any).createSelectionManager()
-        : this.selectionManager;
-
       options.element.appendChild(this.root);
-
-      // seleção desta visual (não recebe seleção de OUTRAS visuais)
-      this.selectionManager.registerOnSelectCallback((_ids: any) => {
-        if (this.suppressNextSelectCallback) {
-          this.suppressNextSelectCallback = false;
-          return;
-        }
-        // Apenas re-renderiza classes, os items já refletem o estado local
-        this.updateListSelectionClasses();
-      });
     }
   }
 
   public update(options: VisualUpdateOptions): void {
     const dv = options.dataViews && options.dataViews[0];
+
     if (dv) this.settings = VisualSettings.parse(dv);
 
-    const cat = dv?.categorical?.categories?.[0] || null;
-    const qn = cat?.source?.queryName || null;
+    const categorical = dv?.categorical as DataViewCategorical;
+    const cat = categorical?.categories && categorical.categories[0] || null;
 
-    // REMOÇÃO DO CAMPO: zera tudo e limpa seleção
+    // Campo removido → zera estado e NÃO aplica/limpa filtro automaticamente
     if (!cat) {
       this.items = [];
-      this.didInitialForce = false;
-      this.lastItemCount = 0;
+      this.currentTarget = null;
       this.lastCategoryQueryName = null;
-
-      this.suppressNextSelectCallback = true;
-      this.selectionManager.clear();
-
+      this.lastItemCount = 0;
       this.render();
       return;
     }
 
-    // TROCA DE CAMPO: reseta estado interno
+    // Troca de campo → reseta
+    const qn = (cat.source && cat.source.queryName) || null;
     if (this.lastCategoryQueryName && qn && qn !== this.lastCategoryQueryName) {
       this.items = [];
-      this.didInitialForce = false;
       this.lastItemCount = 0;
     }
     this.lastCategoryQueryName = qn;
 
-    // Reconstrói SEM “locks”: sempre aceita o que o modelo mandar
-    const r = this.rebuildItems(dv, cat);
+    // Descobre/guarda o target {table, column} do campo
+    this.currentTarget = this.extractTargetFromMetadata(cat);
 
-    // Host tem seleção ATIVA para este visual?
-    const smAny = this.selectionManager as any;
-    const hostHasSelection =
-      typeof smAny.hasSelection === "function" ? !!smAny.hasSelection() : false;
+    // Reconstrói itens conforme DataView atual (já vem afetado pelos filtros da página)
+    this.rebuildItems(cat);
 
-    // Forçar 1ª seleção (modo único) – só quando:
-    // - single + force ligado
-    // - há itens
-    // - ainda não forçamos nesta rodada
-    // - NÃO há seleção no host para esta visual
-    // - a lista ENCOLHEU (contagem atual <= contagem anterior) ou é a 1ª vez (lastItemCount === 0)
+    // Forçar 1ª seleção em modo único se habilitado e seguro
     const isSingle = this.settings.behavior_selectionMode; // true = único
-    const canForceBase =
-      isSingle && this.settings.behavior_forceSelection && this.items.length > 0;
-    const justShrunk = this.lastItemCount === 0 || r.count <= this.lastItemCount;
+    const canForce = isSingle && this.settings.behavior_forceSelection && this.items.length > 0;
 
-    if (canForceBase && !hostHasSelection && !this.didInitialForce && justShrunk) {
-      // só força se o 1º item ainda não está marcado localmente
-      let needForce = true;
+    // só se não tem nada marcado E lista encolheu (ou primeira vez)
+    if (canForce) {
+      let anySel = false;
       for (let i = 0; i < this.items.length; i++) {
-        if (this.items[i].selected) { needForce = false; break; }
+        if (this.items[i].selected) { anySel = true; break; }
       }
-      if (needForce) {
-        // marca localmente
+      const justShrunk = this.lastItemCount === 0 || this.items.length <= this.lastItemCount;
+
+      if (!anySel && justShrunk) {
         for (let i = 0; i < this.items.length; i++) this.items[i].selected = false;
         this.items[0].selected = true;
-
-        // dispara seleção (sem loop)
-        this.suppressNextSelectCallback = true;
-        this.selectionManager.select(this.items[0].selectionId, false);
-
-        this.didInitialForce = true;
+        this.applyBasicFilter(); // aplica filtro no próprio campo
       }
     }
 
-    // Atualiza “baseline” de contagem (p/ heurística)
-    this.lastItemCount = r.count;
+    this.lastItemCount = this.items.length;
 
     this.render();
   }
 
-  // ======== Data ========
+  // ----------------- Data helpers -----------------
 
-  private rebuildItems(dv: DataView, cat: DataViewCategoryColumn): { changed: boolean; count: number } {
-    const categorical = dv.categorical as DataViewCategorical;
-    if (!categorical || !cat) return { changed: false, count: 0 };
-
+  private rebuildItems(cat: DataViewCategoryColumn): void {
     const values = cat.values || [];
-    const newCount = values.length;
+    const newItems: Item[] = new Array(values.length);
 
-    const newItems: Item[] = new Array(newCount);
-    for (let i = 0; i < newCount; i++) {
+    // preserva seleção anterior por label (best-effort)
+    const prevSel = new Set<string>();
+    for (let i = 0; i < this.items.length; i++) {
+      if (this.items[i].selected) prevSel.add(this.items[i].label);
+    }
+
+    for (let i = 0; i < values.length; i++) {
       const v = values[i];
-      const selectionId = (this.host as any)
-        .createSelectionIdBuilder()
-        .withCategory(cat, i)
-        .createSelectionId() as ISelectionId;
-
-      newItems[i] = {
-        label: v == null ? "" : String(v),
-        selectionId,
-        selected: false
-      };
+      const label = v == null ? "" : String(v);
+      newItems[i] = { label, selected: prevSel.has(label) };
     }
 
-    // Mantém seleção anterior por label (best-effort) se possível
-    if (this.items.length > 0) {
-      const prevSelected = new Set<string>();
-      for (let i = 0; i < this.items.length; i++) {
-        if (this.items[i].selected) prevSelected.add(this.items[i].label);
-      }
-      if (prevSelected.size > 0) {
-        for (let i = 0; i < newItems.length; i++) {
-          if (prevSelected.has(newItems[i].label)) newItems[i].selected = true;
-        }
-      }
-    }
-
-    // Detecta mudança
-    let changed = newItems.length !== this.items.length;
-    if (!changed) {
-      for (let i = 0; i < newItems.length; i++) {
-        if (this.items[i]?.label !== newItems[i].label) { changed = true; break; }
-      }
-    }
-
-    if (changed) this.items = newItems;
-    return { changed, count: newCount };
+    this.items = newItems;
   }
 
-  // ======== Render ========
+  // Extrai {table, column} de formas comuns no metadata da categoria
+  private extractTargetFromMetadata(cat: DataViewCategoryColumn): BasicFilterTarget {
+    // 1) expr (mais robusto)
+    const expr: any = (cat.source as any)?.expr;
+    try {
+      const col =
+        (expr && (expr.ref || expr.level || (expr.source && expr.source.ref))) ||
+        (cat.source as any)?.groupName; // fallback raro
+
+      const tbl =
+        (expr && expr.source && expr.source.entity) ||
+        (expr && expr.arg && expr.arg.source && expr.arg.source.entity) ||
+        (expr && expr.arg && expr.arg.arg && expr.arg.arg.entity);
+
+      if (tbl && col) return { table: String(tbl), column: String(col) };
+    } catch (_) { /* ignore */ }
+
+    // 2) queryName muito comum: "Tabela.Coluna"
+    const qn = cat.source?.queryName;
+    if (qn && typeof qn === "string") {
+      const dot = qn.lastIndexOf(".");
+      if (dot > 0 && dot < qn.length - 1) {
+        return { table: qn.substring(0, dot), column: qn.substring(dot + 1) };
+      }
+    }
+
+    // 3) displayName (último recurso – pode não bater com o nome real)
+    if (cat.source?.displayName) {
+      return { table: "", column: cat.source.displayName };
+    }
+
+    return null;
+    }
+
+  // ----------------- Filtro JSON (Basic) -----------------
+
+  private applyBasicFilter(): void {
+    if (!this.currentTarget) return;
+
+    // Coleta labels selecionados
+    const selected: string[] = [];
+    for (let i = 0; i < this.items.length; i++) {
+      if (this.items[i].selected) selected.push(this.items[i].label);
+    }
+
+    // Se nada selecionado, remove o filtro deste visual
+    if (selected.length === 0) {
+      (this.host as any).applyJsonFilter(null, FILTER_OBJECT, FILTER_PROP, 2 /* Remove */);
+      return;
+    }
+
+    const bf: BasicFilter = {
+      $schema: "http://powerbi.com/product/schema#basic",
+      filterType: 1,
+      target: { table: this.currentTarget.table, column: this.currentTarget.column },
+      operator: "In",
+      values: selected
+    };
+
+    // 0 = Merge → combina com outros filtros (ex.: Estado)
+    (this.host as any).applyJsonFilter(bf, FILTER_OBJECT, FILTER_PROP, 0 /* Merge */);
+  }
+
+  // ----------------- Render -----------------
 
   private render(): void {
     while (this.list.firstChild) this.list.removeChild(this.list.firstChild);
@@ -232,15 +237,14 @@ export class Visual implements IVisual {
       li.style.paddingTop = `${this.settings.formatting_itemPadding}px`;
       li.style.paddingBottom = `${this.settings.formatting_itemPadding}px`;
 
-      // Input explícito (radio / checkbox)
       const input = document.createElement("input");
       input.type = isSingle ? "radio" : "checkbox";
       if (isSingle) input.name = "visual-selection-group";
       input.checked = item.selected;
 
       input.addEventListener("click", (ev) => {
-        ev.stopPropagation(); // evita duplo disparo
-        this.onItemClick(item, !isSingle && (ev as MouseEvent).ctrlKey);
+        ev.stopPropagation();
+        this.onItemClick(item);
       });
 
       const label = document.createElement("span");
@@ -251,61 +255,44 @@ export class Visual implements IVisual {
       li.appendChild(input);
       li.appendChild(label);
 
-      // clique na linha inteira também seleciona
       li.addEventListener("mousedown", (ev) => {
         if ((ev as MouseEvent).button !== 0) return;
         ev.preventDefault();
       });
       li.addEventListener("click", (ev) => {
         if ((ev as MouseEvent).button !== 0) return;
-        this.onItemClick(item, !isSingle && (ev as MouseEvent).ctrlKey);
+        this.onItemClick(item);
       });
 
       this.list.appendChild(li);
     }
   }
 
-  private onItemClick(item: Item, userMultiKey: boolean): void {
+  private onItemClick(item: Item): void {
     const isSingle = this.settings.behavior_selectionMode;
-    const isMultiMode = !isSingle;
+    const isMulti = !isSingle;
 
-    // Evita toggle-off no modo único + forçar: clicar no mesmo não limpa
+    // Evita "toggle off" no modo único + forçar seleção
     if (isSingle && this.settings.behavior_forceSelection && item.selected) {
       return;
     }
 
-    if (isMultiMode) {
+    if (isMulti) {
       item.selected = !item.selected;
     } else {
       for (let i = 0; i < this.items.length; i++) this.items[i].selected = false;
       item.selected = true;
     }
 
+    // Sincroniza UI
     this.updateListSelectionClasses();
 
-    // Marca que já “forçamos” nesta rodada, para não re-forçar em update()
-    this.didInitialForce = true;
-
-    // dispara seleção (sem loop)
-    this.suppressNextSelectCallback = true;
-
-    if (isMultiMode) {
-      const selectedIds: ISelectionId[] = [];
-      for (let i = 0; i < this.items.length; i++) {
-        if (this.items[i].selected) selectedIds.push(this.items[i].selectionId);
-      }
-      if (selectedIds.length > 0) {
-        this.selectionManager.select(selectedIds as any, true);
-      } else {
-        this.selectionManager.clear();
-      }
-    } else {
-      this.selectionManager.select(item.selectionId, false);
-    }
+    // Aplica JSON filter (AND com outros visuais)
+    this.applyBasicFilter();
   }
 
   private updateListSelectionClasses(): void {
-    const children = Array.prototype.slice.call(this.list.children) as HTMLElement[];
+    const children = (Array.prototype.slice.call(this.list.children) as HTMLElement[]);
     for (let i = 0; i < children.length; i++) {
       const el = children[i] as HTMLElement;
       if (!el.classList.contains("item")) continue;
@@ -318,7 +305,7 @@ export class Visual implements IVisual {
     }
   }
 
-  // ======== Painel ========
+  // ----------------- Pane de Formatação -----------------
 
   public enumerateObjectInstances(
     options: powerbi.EnumerateVisualObjectInstancesOptions

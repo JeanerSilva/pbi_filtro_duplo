@@ -5,19 +5,19 @@ import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructor
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 export declare class Visual implements IVisual {
     private host;
-    private selectionManager;
     private root;
     private listContainer;
     private list;
     private settings;
     private items;
-    private suppressNextSelectCallback;
-    private didInitialForce;
-    private lastItemCount;
+    private currentTarget;
     private lastCategoryQueryName;
+    private lastItemCount;
     constructor(options?: VisualConstructorOptions);
     update(options: VisualUpdateOptions): void;
     private rebuildItems;
+    private extractTargetFromMetadata;
+    private applyBasicFilter;
     private render;
     private onItemClick;
     private updateListSelectionClasses;
