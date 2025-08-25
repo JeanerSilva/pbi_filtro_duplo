@@ -7,7 +7,7 @@ var powerbiKey: any = "powerbi";
 var powerbi: any = window[powerbiKey];
 var filtroHierarquico123456: IVisualPlugin = {
     name: 'filtroHierarquico123456',
-    displayName: 'Filtro Hierárquico que permite mais de um por tela.',
+    displayName: 'Filtro Hierárquico.',
     class: 'Visual',
     apiVersion: '5.11.0',
     create: (options?: VisualConstructorOptions) => {

@@ -1,0 +1,4 @@
+$PowerShell7Path = "C:\SEPLAN\PowerShell-7.5.2\"
+$env:Path += ";$PowerShell7Path"   
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force
+pwsh --version 

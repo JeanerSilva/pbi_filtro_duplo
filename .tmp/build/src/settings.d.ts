@@ -13,5 +13,5 @@ export declare class VisualSettings {
     search_enabled: boolean;
     search_placeholder: string;
     search_fontSize: number;
-    static parse(dataView: powerbi.DataView): VisualSettings;
+    static parse(dv: powerbi.DataView): VisualSettings;
 }

@@ -8,7 +8,7 @@
 				"file": "resources/filtroHierarquico123456.pbiviz.json"
 			}
 		],
-		"visual": {"name":"FiltroHierarquico","displayName":"Filtro Hierárquico que permite mais de um por tela.","guid":"filtroHierarquico123456","visualClassName":"Visual","version":"1.0.0.0","description":"Filtro simples conjugado: seleção única/múltipla e sincronização entre instâncias.","supportUrl":"planejamento.gov.br","gitHubUrl":""},
+		"visual": {"name":"FiltroHierarquico","displayName":"Filtro Hierárquico.","guid":"filtroHierarquico123456","visualClassName":"Visual","version":"1.0.0.0","description":"Filtro simples conjugado: seleção única/múltipla e sincronização entre instâncias.","supportUrl":"https://planejamento.gov.br","gitHubUrl":""},
 		"metadata": {
 			"pbivizjson": {
 				"resourceId": "rId0"

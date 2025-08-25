@@ -279,7 +279,7 @@ export class Visual implements IVisual {
   if (!this.rootNode || this.rootNode.children.length === 0) {
     const li = document.createElement("li");
     li.className = "node";
-    li.textContent = "Sem itens";
+    li.textContent = "Carregando...";
     this.treeRootEl.appendChild(li);
     return;
   }
@@ -333,11 +333,12 @@ export class Visual implements IVisual {
       label.textContent = node.label;
 
       // ⬇⬇⬇ APLICAÇÃO DA TIPOGRAFIA (usa os toggles booleanos) ⬇⬇⬇
-      label.style.fontFamily    = this.settings.formatting_fontFamily;
-      label.style.color         = this.settings.formatting_fontColor;
-      label.style.fontWeight    = this.settings.formatting_fontBold ? "bold" : "normal";
-      label.style.fontStyle     = this.settings.formatting_fontItalic ? "italic" : "normal";
-      label.style.textDecoration= this.settings.formatting_fontUnderline ? "underline" : "none";
+      label.style.fontFamily     = this.settings.formatting_fontFamily;
+      label.style.color          = this.settings.formatting_fontColor;
+      label.style.fontWeight     = this.settings.formatting_fontBold ? "bold" : "normal";
+      label.style.fontStyle      = this.settings.formatting_fontItalic ? "italic" : "normal";
+      label.style.textDecoration = this.settings.formatting_fontUnderline ? "underline" : "none";
+
       // ⬆⬆⬆------------------------------------------------------⬆⬆⬆
 
       row.addEventListener("mousedown", (ev) => { if ((ev as MouseEvent).button !== 0) return; ev.preventDefault(); });
@@ -512,77 +513,74 @@ export class Visual implements IVisual {
 
   // ===================== FORMAT PANE =====================
   public enumerateObjectInstances(
-  options: powerbi.EnumerateVisualObjectInstancesOptions
-): powerbi.VisualObjectInstanceEnumeration {
+      options: powerbi.EnumerateVisualObjectInstancesOptions
+    ): powerbi.VisualObjectInstanceEnumeration {
 
-  const instances: powerbi.VisualObjectInstance[] = [];
+      const instances: powerbi.VisualObjectInstance[] = [];
 
-  if (options.objectName === "behavior") {
-    instances.push({
-      objectName: "behavior",
-      properties: {
-        selectionMode: this.settings.behavior_selectionMode,
-        forceSelection: this.settings.behavior_forceSelection,
-        leafOnly: this.settings.behavior_leafOnly
-      },
-      selector: {} as any
-    } as any);
-  }
+      if (options.objectName === "behavior") {
+        instances.push({
+          objectName: "behavior",
+          properties: {
+            selectionMode:  this.settings.behavior_selectionMode,
+            forceSelection: this.settings.behavior_forceSelection,
+            leafOnly:       this.settings.behavior_leafOnly
+          },
+          selector: null   // <— IMPORTANTE: null (não {}), para propriedades do visual inteiro
+        } as any);
+      }
 
-  if (options.objectName === "formatting") {
-    // 1) tamanho/spacing
-    instances.push({
-      objectName: "formatting",
-      properties: {
-        fontSize: this.settings.formatting_fontSize,
-        itemPadding: this.settings.formatting_itemPadding
-      },
-      selector: {} as any
-    } as any);
+      if (options.objectName === "formatting") {
+        // a) tamanho e espaçamento
+        instances.push({
+          objectName: "formatting",
+          properties: {
+            fontSize:    this.settings.formatting_fontSize,
+            itemPadding: this.settings.formatting_itemPadding
+          },
+          selector: null
+        } as any);
 
-    // 2) família
-    instances.push({
-      objectName: "formatting",
-      properties: {
-        fontFamily: this.settings.formatting_fontFamily
-      },
-      selector: {} as any
-    } as any);
+        // b) família
+        instances.push({
+          objectName: "formatting",
+          properties: { fontFamily: this.settings.formatting_fontFamily },
+          selector: null
+        } as any);
 
-    // 3) cor (fill)
-    instances.push({
-      objectName: "formatting",
-      properties: {
-        fontColor: { solid: { color: this.settings.formatting_fontColor } }
-      },
-      selector: {} as any
-    } as any);
+        // c) cor (fill)
+        instances.push({
+          objectName: "formatting",
+          properties: { fontColor: { solid: { color: this.settings.formatting_fontColor } } },
+          selector: null
+        } as any);
 
-    // 4) estilo (B/I/U) — em instância separada!
-    instances.push({
-      objectName: "formatting",
-      properties: {
-        fontBold: this.settings.formatting_fontBold,
-        fontItalic: this.settings.formatting_fontItalic,
-        fontUnderline: this.settings.formatting_fontUnderline
-      },
-      selector: {} as any
-    } as any);
-  }
+        // d) estilos (B/I/U)
+        instances.push({
+          objectName: "formatting",
+          properties: {
+            fontBold:      this.settings.formatting_fontBold,
+            fontItalic:    this.settings.formatting_fontItalic,
+            fontUnderline: this.settings.formatting_fontUnderline
+          },
+          selector: null
+        } as any);
+      }
 
-  if (options.objectName === "search") {
-    instances.push({
-      objectName: "search",
-      properties: {
-        enabled: this.settings.search_enabled,
-        placeholder: this.settings.search_placeholder,
-        fontSize: this.settings.search_fontSize
-      },
-      selector: {} as any
-    } as any);
-  }
+      if (options.objectName === "search") {
+        instances.push({
+          objectName: "search",
+          properties: {
+            enabled:     this.settings.search_enabled,
+            placeholder: this.settings.search_placeholder,
+            fontSize:    this.settings.search_fontSize
+          },
+          selector: null
+        } as any);
+      }
 
-  return instances;
-}
+      return instances;
+    }
+
 
 }
